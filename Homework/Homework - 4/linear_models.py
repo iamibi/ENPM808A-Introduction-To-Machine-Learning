@@ -4,7 +4,9 @@ import math
 import cvxopt
 
 
-def perceptron(points, dim, max_it=100, use_adaline=False, eta=1, randomize=False, print_out=True):
+def perceptron(
+    points, dim, max_it=100, use_adaline=False, eta=1, randomize=False, print_out=True
+):
     w = np.zeros(dim + 1)
     xs, ys = points[:, : dim + 1], points[:, dim + 1]
     num_points = points.shape[0]
@@ -87,7 +89,9 @@ class SVM:
         q = cvxopt.matrix(p)
         G = cvxopt.matrix(-A)
         h = cvxopt.matrix(-c)
-        res = cvxopt.solvers.qp(P, q, G, h, solver=solver, options={"show_progress": False})
+        res = cvxopt.solvers.qp(
+            P, q, G, h, solver=solver, options={"show_progress": False}
+        )
         if res["status"] != "optimal":
             print(f"Couldn't find optimal solution!")
             print(f"Final status: {res['status']}")

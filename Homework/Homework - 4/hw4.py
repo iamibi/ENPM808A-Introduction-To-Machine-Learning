@@ -3,6 +3,10 @@ import numpy as np
 import pandas as pd
 import linear_models as lm
 import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+from sklearn.utils import shuffle
+from sklearn.model_selection import cross_val_score
 
 
 class Homework4:
@@ -73,11 +77,27 @@ class Homework4:
         figsize = plt.figaspect(1)
         f, ax = plt.subplots(1, 1, figsize=figsize)
 
-        ax.scatter(positives[["x1"]].values, positives[["x2"]].values, marker="+", c="g", label="+1 labels")
-        ax.scatter(negatives[["x1"]].values, negatives[["x2"]].values, marker=r"$-$", c="b", label="-1 labels")
-        print(f"Number of positive points = {len(positives)}\nNumber of negatives points = {len(negatives)}")
+        ax.scatter(
+            positives[["x1"]].values,
+            positives[["x2"]].values,
+            marker="+",
+            c="g",
+            label="+1 labels",
+        )
+        ax.scatter(
+            negatives[["x1"]].values,
+            negatives[["x2"]].values,
+            marker=r"$-$",
+            c="b",
+            label="-1 labels",
+        )
+        print(
+            f"Number of positive points = {len(positives)}\nNumber of negatives points = {len(negatives)}"
+        )
 
-        norm_g, num_its, _ = lm.perceptron(df1.values, dim, maxit, use_adaline, eta, randomize=False, print_out=True)
+        norm_g, num_its, _ = lm.perceptron(
+            df1.values, dim, maxit, use_adaline, eta, randomize=False, print_out=True
+        )
 
         x1 = np.arange(0, 1, 0.02)
         norm_g = norm_g / norm_g[-1]
@@ -114,9 +134,50 @@ class Homework4:
 
         for lamda_t in range(2):
             for Q in range(2, 4):
-                linear_reg = lm.LinearRegression(reg_param=lamda_t, poly_degree=Q, to_classify=True)
+                linear_reg = lm.LinearRegression(
+                    reg_param=lamda_t, poly_degree=Q, to_classify=True
+                )
                 linear_reg.fit(X_train, y_train)
                 cls.__plot_q4(df, linear_reg, f"Question 4 Q = {Q}, Lambda = {lamda_t}")
+
+    @classmethod
+    def question_5(cls):
+        mnist_train = pd.read_csv("mnist_train_binary (2).csv")
+        mnist_test = pd.read_csv("mnist_test_binary (1).csv")
+        train_data = mnist_train.copy()
+        test_data = mnist_test.copy()
+
+        X_train, y_train, trn_one, trn_five = Util.data_preprocess(
+            Util.generate_train_test(train_data, test_data)[0],
+            Util.generate_train_test(train_data, test_data)[1],
+        )
+
+        X_test, y_test, test_one, test_five = Util.data_preprocess(
+            Util.generate_train_test(train_data, test_data)[2],
+            Util.generate_train_test(train_data, test_data)[3],
+        )
+
+        model_lr = LinearRegression()
+        model_lr.fit(X_train, y_train)
+        w1, w2 = model_lr.coef_
+        w0 = model_lr.intercept_
+        m_lr = -w1 / w2
+        c_lr = -w0 / w2
+        y_pred = model_lr.predict(X_test)
+        mse = mean_squared_error(y_test, y_pred)
+
+        X_shuffle, y_shuffle = shuffle(X_train, y_train, random_state=42)
+        scores = cross_val_score(
+            model_lr,
+            X_shuffle,
+            y_shuffle,
+            scoring="neg_mean_squared_error",
+            cv=5,
+            n_jobs=-1,
+        )
+        rmse = np.sqrt(-scores)
+        Util.best_SVM(X_train, y_train)
+        Util.best_NN(X_train, y_train, 5)
 
     @classmethod
     def __plot_q4(cls, df, message, tit):
@@ -196,5 +257,7 @@ if __name__ == "__main__":
         Homework4.question_2()
     elif question_to_run == "4":
         Homework4.question_4()
+    elif question_to_run == "5":
+        Homework4.question_5()
     else:
         raise ValueError("Invalid choice")

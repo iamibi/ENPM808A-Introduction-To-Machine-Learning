@@ -1,9 +1,19 @@
 from matplotlib.colors import ListedColormap
 from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import (
+    GridSearchCV,
+    ShuffleSplit,
+    learning_curve,
+    cross_val_score,
+)
+from sklearn.neural_network import MLPClassifier
+from sklearn.svm import SVC
+from skimage import metrics
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import math
+import cv2
 
 
 class Util:
@@ -42,11 +52,15 @@ class Util:
 
     @classmethod
     def get_grid(cls, x1_min, x1_max, x2_min, x2_max, step=0.02):
-        xx1, xx2 = np.meshgrid(np.arange(x1_min, x1_max, step), np.arange(x2_min, x2_max, step))
+        xx1, xx2 = np.meshgrid(
+            np.arange(x1_min, x1_max, step), np.arange(x2_min, x2_max, step)
+        )
         return xx1, xx2
 
     @classmethod
-    def plot_decision_boundaries(cls, xx1, xx2, num_cats, classifier, transformer=None, alpha=0.4):
+    def plot_decision_boundaries(
+        cls, xx1, xx2, num_cats, classifier, transformer=None, alpha=0.4
+    ):
         colors = ("blue", "red", "green", "yellow")
         cmap = ListedColormap(colors[:num_cats])
 
@@ -107,7 +121,9 @@ class Util:
             if legendx and legendy:
                 legend_x = legendx
                 legend_y = legendy
-                plt.legend(legends, loc="center right", bbox_to_anchor=(legend_x, legend_y))
+                plt.legend(
+                    legends, loc="center right", bbox_to_anchor=(legend_x, legend_y)
+                )
             else:
                 plt.legend()
 
@@ -145,3 +161,127 @@ class Util:
         df = pd.DataFrame({"x1": x1.flatten(), "x2": x2.flatten()})
         df["y"] = np.sign(df["x2"])
         return df
+
+    @classmethod
+    def generate_train_test(cls, train_data, test_data):
+        X_tr, y_tr = (
+            train_data.drop(labels=["label"], axis=1).to_numpy(),
+            train_data["label"],
+        )
+        X_tst, y_tst = (
+            test_data.drop(labels=["label"], axis=1).to_numpy(),
+            test_data["label"],
+        )
+        return X_tr, y_tr, X_tst, y_tst
+
+    @classmethod
+    def data_preprocess(cls, x_data, label):
+        one = [[], []]
+        five = [[], []]
+        X = list()
+        y = list()
+        for i in range(len(x_data)):
+            img = x_data[i].reshape(28, 28).astype(np.uint8)
+            intensity = img.mean()
+            symm = metrics.structural_similarity(img, cv2.flip(img, 0)) * 100
+            features = [intensity, symm]
+            X.append(features)
+            if label[i] == 1:
+                y.append(1)
+                one[0].append(intensity)
+                one[1].append(symm)
+            else:
+                y.append(-1)
+                five[0].append(intensity)
+                five[1].append(symm)
+        return X, y, one, five
+
+    @classmethod
+    def hyper_parameter_tuning(cls, model_type, X_train, Y_train):
+        clf = GridSearchCV(
+            estimator=model_type["estimator"],
+            param_grid=model_type["params"],
+            cv=5,
+            n_jobs=-1,
+            verbose=1,
+        )
+        clf.fit(X_train, Y_train)
+        return [clf.best_estimator_, clf.best_params_]
+
+    @classmethod
+    def plot_curve(cls, estimator, X, y, title, train_sizes=np.linspace(0.1, 1.0, 10)):
+        cv = ShuffleSplit(n_splits=5, test_size=0.2, random_state=0)
+        train_set_sizes, train_scores, test_scores, fit_times, _ = learning_curve(
+            estimator,
+            X,
+            y,
+            scoring="accuracy",
+            cv=cv,
+            n_jobs=-1,
+            train_sizes=train_sizes,
+            return_times=True,
+        )
+        train_scores_mean = np.mean(train_scores, axis=1)
+        # train_scores_std = np.std(train_scores, axis=1)
+        test_scores_mean = np.mean(test_scores, axis=1)
+        # test_scores_std = np.std(test_scores, axis=1)
+        plt.title(title)
+        plt.xlabel("Training examples")
+        plt.ylabel("Score")
+        plt.grid()
+        plt.plot(
+            train_set_sizes, train_scores_mean, "o-", color="r", label="Training score"
+        )
+        plt.plot(
+            train_set_sizes,
+            test_scores_mean,
+            "o-",
+            color="g",
+            label="Cross-validation score",
+        )
+        plt.legend(loc="best")
+        plt.show()
+
+    @classmethod
+    def best_SVM(cls, X_train, Y_train):
+        model = dict(
+            estimator=SVC(random_state=None),
+            params=[
+                {"C": [1, 10, 100], "gamma": [0.0001, 0.01, 1], "kernel": ["rbf"]},
+                {"C": [1, 10, 100], "degree": [1, 2, 3], "kernel": ["poly"]},
+            ],
+        )
+        [estimator, params] = cls.hyper_parameter_tuning(model, X_train, Y_train)
+        cls.plot_curve(estimator, X_train, Y_train, "SVM learning curve accuracy")
+        cv_results = cross_val_score(
+            estimator, X_train, Y_train, cv=5, scoring="accuracy"
+        )
+        print(
+            f"\nSVM: \n\tOptimal Hyper-parameters: {params} \n\tscores: {cv_results} \n\tmean score: {cv_results.mean()}"
+        )
+        return [estimator, cv_results.mean()]
+
+    @classmethod
+    def best_NN(cls, X_train, Y_train, kfold):
+        model = dict(
+            estimator=MLPClassifier(max_iter=1000, random_state=None),
+            params=[
+                {
+                    "hidden_layer_sizes": [((6,) * i) for i in range(2, 5)],
+                    "alpha": [0.0001, 0.001, 0.01, 0.1],
+                    "activation": ["logistic", "tanh", "relu"],
+                    "solver": ["sgd", "adam"],
+                }
+            ],
+        )
+        [estimator, params] = cls.hyper_parameter_tuning(model, X_train, Y_train)
+        cls.plot_curve(
+            estimator, X_train, Y_train, "Neural Network learning curve accuracy"
+        )
+        cv_results = cross_val_score(
+            estimator, X_train, Y_train, cv=kfold, scoring="accuracy"
+        )
+        print(
+            f"\nNN: \n\tOptimal Hyper-parameters: {params} \n\tscores: {cv_results} \n\tmean score: {cv_results.mean()}"
+        )
+        return [estimator, cv_results.mean()]
